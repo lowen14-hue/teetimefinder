@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tee Time Finder</title>
+    <meta
+      name="description"
+      content="A polished tee time finder interface for locating nearby public golf courses and tee times."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="brand-mark" aria-hidden="true">⛳</div>
+        <div>
+          <p class="eyebrow">Golf planner</p>
+          <h1>Tee Time Finder</h1>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="panel search-panel">
+          <div class="panel-header">
+            <h2>Course search</h2>
+          </div>
+
+          <form id="search-form" class="search-form">
+            <label class="field">
+              <span>ZIP code</span>
+              <input id="zipInput" name="zip" type="text" value="30303" placeholder="Enter ZIP code" required />
+            </label>
+
+            <label class="field">
+              <span>Radius</span>
+              <div class="range-row">
+                <input id="radiusInput" name="radius" type="range" min="5" max="50" value="25" />
+                <output id="radiusValue" for="radiusInput">25 mi</output>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Date</span>
+              <input id="dateInput" name="date" type="date" />
+            </label>
+
+            <label class="field">
+              <span>Preferred time</span>
+              <select id="timeInput" name="time">
+                <option value="morning">Morning</option>
+                <option value="midday">Midday</option>
+                <option value="afternoon">Afternoon</option>
+                <option value="sunset">Sunset</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Players</span>
+              <select id="playersInput" name="players">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4" selected>4</option>
+              </select>
+            </label>
+
+            <button type="submit" class="primary-btn">Find tee times</button>
+          </form>
+        </aside>
+
+        <section class="panel results-panel">
+          <div class="panel-header results-header">
+            <h2>Available courses</h2>
+            <span id="resultCount" class="result-pill">Ready</span>
+          </div>
+
+          <div id="status" class="status-box">
+            Search by ZIP code to see nearby public golf courses and tee times.
+          </div>
+
+          <div id="results" class="results-list" aria-live="polite"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
