@@ -138,6 +138,21 @@ function ensureUrl(value) {
   return `https://${value}`;
 }
 
+async function fetchTeeTimeInventory(course, date, preferredTime, players) {
+  // This app does not have a provider API key configured yet.
+  // The real architecture is to call a tee-time provider here, but we must not fabricate slots.
+  // If no provider is configured, return an empty inventory and let the frontend say so.
+  const providerApiKey = process.env.TEE_TIME_PROVIDER_API_KEY;
+  if (!providerApiKey) {
+    return [];
+  }
+
+  // Example hook for a real provider integration:
+  // const response = await fetch('https://provider.example.com/tee-times', {...})
+  // return await response.json();
+  return [];
+}
+
 app.post('/api/search', async (req, res) => {
   try {
     const { zip, radius, date, time, players } = req.body || {};
@@ -158,64 +173,72 @@ app.post('/api/search', async (req, res) => {
       return res.json({ courses: [] });
     }
 
-    const candidates = await Promise.all(
+    const courses = await Promise.all(
       rawCourses.slice(0, 10).map(async (course) => {
         const weather = await getWeather(course.lat, course.lon, selectedDate);
+        const distance = calculateDistanceMiles(location.lat, location.lon, course.lat, course.lon);
+        const slots = await fetchTeeTimeInventory(course, selectedDate, selectedTime, playerCount);
 
         return {
           name: course.name,
           website: ensureUrl(course.website),
-          distance: calculateDistanceMiles(location.lat, location.lon, course.lat, course.lon),
+          distance,
           weather,
           preferredTime: selectedTime,
           preferredTimeLabel: getTimeLabel(selectedTime),
           players: playerCount,
           date: selectedDate,
+          slots,
         };
       })
     );
 
-    if (!openai) {
-      const ranked = candidates
-        .map((course) => ({
-          ...course,
-          why: 'Nearby public course within your selected search radius.',
-          recommendation: course.distance <= 15 ? 'high' : 'medium',
-        }))
-        .sort((a, b) => a.distance - b.distance);
-
-      return res.json({ courses: ranked });
-    }
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'user',
-          content: `Use only the real course data below to rank the best matches for the user. Do not invent course names, distances, websites, or weather. If any field is missing, say "Not available". Return valid JSON only in this structure: {"courses":[{"name":"...","why":"...","recommendation":"high|medium|low"}]}. User preferences: ZIP ${zip}, radius miles ${selectedRadius}, date ${selectedDate}, preferred time ${selectedTime}, players ${playerCount}. Data: ${JSON.stringify(candidates, null, 2)}`,
-        },
-      ],
-    });
-
-    let aiData = { courses: [] };
-    try {
-      aiData = JSON.parse(completion.choices[0].message.content || '{}');
-    } catch {
-      aiData = { courses: [] };
-    }
-
-    const ranked = candidates
-      .map((course) => {
-        const match = aiData.courses?.find((item) => item.name === course.name) || {};
-
-        return {
-          ...course,
-          why: match.why || 'Nearby public course that matches your selected tee time preferences.',
-          recommendation: match.recommendation || (course.distance <= 15 ? 'high' : 'medium'),
-        };
-      })
+    const ranked = courses
+      .map((course) => ({
+        ...course,
+        why: `Nearby golf course matching your ${getTimeLabel(course.preferredTime).toLowerCase()} search preference for ${course.players} players.`,
+        recommendation: course.distance <= 15 ? 'high' : 'medium',
+      }))
       .sort((a, b) => a.distance - b.distance);
+
+    if (openai) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          response_format: { type: 'json_object' },
+          messages: [
+            {
+              role: 'user',
+              content: `Rank these real golf course matches using only the supplied data. Do not invent course names, websites, or tee times. Return JSON only: {"courses":[{"name":"...","why":"...","recommendation":"high|medium|low"}]}. Data: ${JSON.stringify(
+                ranked.map(({ name, distance, weather, preferredTimeLabel, players, website }) => ({
+                  name,
+                  distance,
+                  weather,
+                  preferredTimeLabel,
+                  players,
+                  website,
+                })),
+                null,
+                2
+              )}`,
+            },
+          ],
+        });
+
+        const aiData = JSON.parse(completion.choices[0].message.content || '{}');
+        const aiMap = new Map((aiData.courses || []).map((item) => [item.name, item]));
+
+        return res.json({
+          courses: ranked.map((course) => ({
+            ...course,
+            why: aiMap.get(course.name)?.why || course.why,
+            recommendation: aiMap.get(course.name)?.recommendation || course.recommendation,
+          })),
+        });
+      } catch (error) {
+        console.error('AI ranking failed, using real course ordering instead:', error);
+      }
+    }
 
     return res.json({ courses: ranked });
   } catch (error) {
